@@ -1,3 +1,2 @@
-# 最后一周作业
-这次作业仅针对case4进行实现，并未实现一般情况。
-可视化是通过引入一个python文件进行实现，引入了一个matplotlib库，将每一步的数据导入csv文件中再进行可视化
+shuxing.cpp:跑矩阵属性
+tranToCOO.cpp:将初始矩阵转换成标准COO格式

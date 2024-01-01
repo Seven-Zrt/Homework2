@@ -6,8 +6,8 @@
 typedef struct {
     long long row;
     long long col;
-    long double real;
-    long double imag;
+    long double real; // Assuming real part is stored
+    // long double imag; // Assuming the matrix is real, uncomment if complex
 } ComplexEntry;
 
 typedef struct {
@@ -24,46 +24,36 @@ void readComplexMTXFile(const char* filePath, ComplexSparseMatrix* matrix) {
         exit(EXIT_FAILURE);
     }
 
-    // 尝试从文件第一行读取非零元素数量
+    // Read Matrix Market header
+    char header[256];
+    if (fgets(header, sizeof(header), file) == NULL || header[0] != '%') {
+        perror("无法读取Matrix Market头部");
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+
+    // Check if it is a coordinate pattern symmetric matrix
+    if (sscanf(header, "%%%%MatrixMarket matrix coordinate pattern symmetric\n") != 0) {
+        perror("不是Matrix Market coordinate pattern symmetric格式");
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+
+    // Read matrix dimensions and nnz
     if (fscanf(file, "%lld %lld %lld", &matrix->rows, &matrix->cols, &matrix->nnz) != 3) {
-        // 读取失败，报告错误并退出
         perror("读取文件头失败");
         fclose(file);
         exit(EXIT_FAILURE);
     }
 
-    // 检查非零元素数量是否为负数
-    if (matrix->nnz < 0) {
-        // 非零元素数量为负数，尝试从文件的第一行读取正确的非零元素数量
-        if (fseek(file, 0, SEEK_SET) != 0) {
-            // 定位文件失败，报告错误并退出
-            perror("定位文件失败");
-            fclose(file);
-            exit(EXIT_FAILURE);
-        }
-
-        // 尝试从文件的第一行读取非零元素数量
-        if (fscanf(file, "%lld", &matrix->nnz) != 1) {
-            // 读取失败，报告错误并退出
-            perror("读取非零元素数量失败");
-            fclose(file);
-            exit(EXIT_FAILURE);
-        }
-
-        // 检查非零元素数量是否为负数
-        if (matrix->nnz < 0) {
-            // 非零元素数量依然为负数，报告错误并退出
-            fprintf(stderr, "非零元素数量为负数\n");
-            fclose(file);
-            exit(EXIT_FAILURE);
-        }
-    }
-
     matrix->entries = (ComplexEntry*)malloc(matrix->nnz * sizeof(ComplexEntry));
 
     for (long long i = 0; i < matrix->nnz; ++i) {
-        fscanf(file, "%lld %lld (%Lf, %Lf)", &matrix->entries[i].row, &matrix->entries[i].col,
-               &matrix->entries[i].real, &matrix->entries[i].imag);
+        if (fscanf(file, "%lld %lld %Lf", &matrix->entries[i].row, &matrix->entries[i].col, &matrix->entries[i].real) != 3) {
+            perror("读取矩阵元素失败");
+            fclose(file);
+            exit(EXIT_FAILURE);
+        }
         matrix->entries[i].row--;
         matrix->entries[i].col--;
     }
@@ -143,31 +133,29 @@ void calculateNonZeroStatistics(const ComplexSparseMatrix* matrix, const char* o
 
     colNonZeroAverage /= matrix->cols;
 
-    // 判断是否为对称矩阵
-    int isSymmetric = 1;
+    // 判断是否为对称矩阵（形状对称）
+    int isShapeSymmetric = 1;
     for (long long i = 0; i < matrix->nnz; ++i) {
         long long row = matrix->entries[i].row;
         long long col = matrix->entries[i].col;
-        long double value = matrix->entries[i].real;
 
-        // 寻找对应位置的元素
+        // 判断对应位置的元素是否存在
+        int found = 0;
         for (long long j = 0; j < matrix->nnz; ++j) {
             if (matrix->entries[j].row == col && matrix->entries[j].col == row) {
-                // 对称位置的元素是否相等
-                if (matrix->entries[j].real != value) {
-                    isSymmetric = 0;
-                    break;
-                }
+                found = 1;
+                break;
             }
         }
 
-        if (!isSymmetric) {
+        if (!found) {
+            isShapeSymmetric = 0;
             break;
         }
     }
 
     // 输出判断结果
-    if (isSymmetric) {
+    if (isShapeSymmetric) {
         fprintf(outputFile, "矩阵是对称的\n");
     } else {
         fprintf(outputFile, "矩阵不是对称的\n");
@@ -189,7 +177,7 @@ void calculateNonZeroStatistics(const ComplexSparseMatrix* matrix, const char* o
 }
 
 int main() {
-    const char* filePath = "/media/zh/LENOVO_USB_HDD/for_jinzhou/2.mtx";
+    const char* filePath = "/media/zh/LENOVO_USB_HDD/for_jinzhou/4_new.mtx";
     const char* outputFilePath = "nonzero_statistics.txt";
 
     ComplexSparseMatrix complexMatrix;
